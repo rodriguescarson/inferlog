@@ -2,12 +2,14 @@ import { streamText, type StreamTextOnFinishCallback } from "ai";
 import { nanoid } from "nanoid";
 import { inferenceBus } from "./events";
 import { makePreview } from "./redact";
+import { persistEvents } from "./store";
 import { sendEvents } from "./transport";
 import type { InferenceEvent } from "./types";
 
 export { inferenceEventSchema, ingestBatchSchema } from "./types";
 export type { InferenceEvent } from "./types";
 export { redact, makePreview } from "./redact";
+export { persistEvents } from "./store";
 export { sendEvents } from "./transport";
 export { inferenceBus } from "./events";
 
@@ -44,8 +46,15 @@ type StreamTextArgs = Parameters<typeof streamText>[0];
  */
 export async function recordInference(event: InferenceEvent): Promise<void> {
   try {
+    // 1. fan out on the bus (metrics counters, future subscribers)
     inferenceBus.emitInference(event);
-    await sendEvents([event]);
+    // 2. persist. Default = in-process write (robust + fast on serverless).
+    //    Only cross the network when an EXTERNAL ingestion service is set.
+    if (process.env.INGEST_URL) {
+      await sendEvents([event]);
+    } else {
+      await persistEvents([event]);
+    }
   } catch (err) {
     // swallow — telemetry must never surface to the caller
     console.error("[observe] recordInference failed:", err);

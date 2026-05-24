@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { db } from "@/db/client";
-import { inferenceLogs } from "@/db/schema";
+import { persistEvents } from "@/lib/observe/store";
 import { ingestBatchSchema } from "@/lib/observe/types";
-import { redact } from "@/lib/observe/redact";
 import { clientKey, LIMITS, rateLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
@@ -58,39 +56,13 @@ export async function POST(req: Request) {
     );
   }
 
-  // 4. extract -> rows
-  const rows = parsed.data.events.map((e) => ({
-    requestId: e.requestId,
-    conversationId: e.conversationId ?? null,
-    messageId: e.messageId ?? null,
-    provider: e.provider,
-    model: e.model,
-    status: e.status,
-    latencyMs: e.latencyMs ?? null,
-    ttfbMs: e.ttfbMs ?? null,
-    inputTokens: e.inputTokens ?? null,
-    outputTokens: e.outputTokens ?? null,
-    totalTokens: e.totalTokens ?? null,
-    finishReason: e.finishReason ?? null,
-    errorMessage: e.errorMessage ?? null,
-    // Defense-in-depth: the SDK already redacts, but we re-redact at the
-    // trust boundary so a direct/buggy poster can never persist raw PII.
-    inputPreview: e.inputPreview ? redact(e.inputPreview).text : null,
-    outputPreview: e.outputPreview ? redact(e.outputPreview).text : null,
-    metadata: (e.metadata ?? null) as Record<string, unknown> | null,
-    createdAt: e.timestamp ? new Date(e.timestamp) : new Date(),
-  }));
-
-  // 5. idempotent store
+  // 4 + 5. extract, redact, and idempotently store (shared with the
+  //        in-process recorder so the two paths can never drift).
   try {
-    await db
-      .insert(inferenceLogs)
-      .values(rows)
-      .onConflictDoNothing({ target: inferenceLogs.requestId });
+    const accepted = await persistEvents(parsed.data.events);
+    return NextResponse.json({ accepted }, { status: 202 });
   } catch (err) {
     console.error("[ingest] store failed:", err);
     return NextResponse.json({ error: "store_failed" }, { status: 500 });
   }
-
-  return NextResponse.json({ accepted: rows.length }, { status: 202 });
 }

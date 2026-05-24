@@ -35,7 +35,11 @@
 
 1. **Capture (SDK).** `observeStreamText` (`src/lib/observe/index.ts`) wraps the AI SDK's `streamText`. It records start time, the time-to-first-token (first `onChunk`), and on completion reads token usage + finish reason from `onFinish` (or the error from `onError`). It builds an `InferenceEvent`, redacts the input/output previews, and hands it off.
 2. **Decouple (event bus).** The event is emitted on an in-process bus (`events.ts`). Producers never know the sink. This is the seam where a real broker (Kafka/QStash/SQS) plugs in.
-3. **Ship (transport).** `transport.ts` POSTs the event to `/api/ingest` with a bearer token. It's invoked inside Next's `after()`, so it runs **after** the user's stream is flushed — zero added latency. It retries once with backoff, uses `keepalive`, and never throws into the chat path.
+3. **Ship.** Two sinks share one code path (`persistEvents` in `store.ts`) so they can't drift:
+   - **In-process (default).** When the chatbot and the pipeline are the same deployment, `recordInference` calls `persistEvents` directly — no network hop. This is robust and fast on serverless, where a self-HTTP call to one's own deployment URL is fragile (deployment-protected URLs, token bootstrapping, extra latency).
+   - **HTTP (external).** Set `INGEST_URL` and the SDK's `transport.ts` POSTs batches to `/api/ingest` with a bearer token instead — retry-once, `keepalive`, never throws. This is the path a *separate* service or a browser/edge SDK would use.
+
+   Either way the call happens inside Next's `after()`, so it runs **after** the user's stream is flushed — zero added latency.
 4. **Ingest (endpoint).** `/api/ingest` runs an ordered pipeline: **authN** (token) → **throttle** (rate limit) → **validate/parse** (zod schema is the contract gate; malformed batch → `400`, no partial writes) → **extract** (promote queryable fields to columns, bag the rest in JSONB) → **redact** (again, at the trust boundary) → **store** (idempotent upsert on `request_id`).
 5. **Read (dashboard).** `/api/stats` computes rollups in SQL (`percentile_cont` for p95, `filter` aggregates for error/blocked counts, `date_trunc` for hourly buckets). The dashboard polls every 5s.
 

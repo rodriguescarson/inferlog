@@ -16,7 +16,7 @@ A lightweight **chatbot + LLM inference logging & ingestion system**. Every mode
 |---|---|
 | Multi-turn chatbot, short context, simple UI | `src/components/ChatApp.tsx`, `src/app/api/chat/route.ts` |
 | Lightweight SDK / wrapper capturing inference metadata | `src/lib/observe/` |
-| Sends logs to ingestion endpoint in near real-time | `src/lib/observe/transport.ts` (+ Next `after()`) |
+| Sends logs to ingestion in near real-time | in-process `persistEvents` by default; HTTP `transport.ts` when `INGEST_URL` set (+ Next `after()`) |
 | Ingestion API: receive → validate → extract → store | `src/app/api/ingest/route.ts` |
 | DB storage: messages, inference logs, extracted metadata | `src/db/schema.ts` |
 | **Multi-provider** (Anthropic/OpenAI/Google/xAI) | `src/lib/providers.ts` via Vercel AI Gateway |

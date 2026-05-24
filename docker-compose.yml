@@ -1,0 +1,45 @@
+# One-command setup:  docker compose up --build
+#
+# Brings up Postgres (schema auto-applied from ./drizzle on first boot) and the
+# Next.js app (chatbot + ingestion + dashboard) on http://localhost:3000.
+#
+# Set AI_GATEWAY_API_KEY in your shell (or a .env next to this file) so the
+# chatbot can reach providers locally:  export AI_GATEWAY_API_KEY=...
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inferlog
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # drizzle-generated DDL runs as init SQL on first boot (postgres ignores
+      # the non-.sql files in this dir, so mounting the whole folder is safe).
+      - ./drizzle:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inferlog"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/inferlog
+      INGEST_TOKEN: ${INGEST_TOKEN:-dev-ingest-token}
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:-}
+      # SDK posts logs back to this same container.
+      INGEST_URL: http://localhost:3000/api/ingest
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

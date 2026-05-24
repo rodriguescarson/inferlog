@@ -4,9 +4,9 @@ A lightweight **chatbot + LLM inference logging & ingestion system**. Every mode
 
 > Built as one deployable Next.js app so the whole loop — chat → SDK → ingestion → DB → dashboard — is easy to read and run. The SDK, ingestion service, and storage are cleanly separated and could be split into independent services without touching the producers (see [ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-**Live demo:** _<DEMO_URL>_ · **Dashboard:** _<DEMO_URL>/dashboard_
+**Live demo:** https://inferlog.vercel.app · **Dashboard:** https://inferlog.vercel.app/dashboard
 
-![dashboard](./docs/dashboard.png)
+> Note: the chatbot's live generation requires the Vercel team's AI Gateway to have a payment method on file (it then draws on free credits). The full **logging / ingestion / dashboard / guardrail / redaction** pipeline is live and exercisable without it — the dashboard above is populated from real events flowing through the ingestion API.
 
 ---
 
